@@ -1,0 +1,250 @@
+
+
+<!--
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8">
+    <title>ME 1</title>
+  </head>
+  
+  <body>
+    <canvas id="Canvas1"></canvas>
+  </body>
+  
+  <script src="src/main.js" type="module"></script>
+</html>
+-->
+
+
+
+<!--
+https://bl.ocks.org/mbostock/db6b4335bf1662b413e7968910104f0f
+-->
+<!DOCTYPE html>
+<meta charset="UTF-8">
+<style>
+.axis path
+{
+  display: none;
+}
+
+.axis line
+{
+  stroke-opacity: 0.3;
+  shape-rendering: crispEdges;
+}
+
+.crispEdges
+{
+  image-rendering: optimizeSpeed;             /* STOP SMOOTHING, GIVE ME SPEED  */
+  image-rendering: -moz-crisp-edges;          /* Firefox                        */
+  image-rendering: -o-crisp-edges;            /* Opera                          */
+  image-rendering: -webkit-optimize-contrast; /* Chrome (and eventually Safari) */
+  image-rendering: pixelated;                 /* Chrome                         */
+  image-rendering: optimize-contrast;         /* CSS3 Proposed                  */
+  -ms-interpolation-mode: nearest-neighbor;   /* IE8+                           */
+}
+
+button
+{
+  position: absolute;
+  top: 20px;
+  left: 20px;
+}
+
+
+</style>
+
+<button>Reset</button>
+
+<!--
+<svg width="960" height="500">
+</svg>
+-->
+
+<script src="https://d3js.org/d3.v5.min.js"></script>
+
+<script>
+
+//viewWidthPixel, viewHeightPixel
+
+/*
+var svg = d3.select("svg"),
+  width = +svg.attr("width"),
+  height = +svg.attr("height");
+*/
+
+var width = 950, height = 500;
+var svg = d3.select("body").append("svg")
+  .attr("width", width)
+  .attr("height", height)
+
+var zoom = d3.zoom()
+  .scaleExtent([1, 40])
+  .translateExtent([[-100, -100], [width + 90, height + 100]])
+  .on("zoom", zoomed);
+
+var x = d3.scaleLinear()
+  .domain([-1, width + 1])
+  .range([-1, width + 1]);
+
+var y = d3.scaleLinear()
+  .domain([-1, height + 1])
+  .range([-1, height + 1]);
+
+var xAxis = d3.axisBottom(x)
+  .ticks((width + 2) / (height + 2) * 10)
+  .tickSize(height)
+  .tickPadding(8 - height);
+
+var yAxis = d3.axisRight(y)
+  .ticks(10)
+  .tickSize(width)
+  .tickPadding(8 - width);
+
+var gX = svg.append("g")
+  .attr("class", "axis axis--x")
+  .call(xAxis);
+
+var gY = svg.append("g")
+  .attr("class", "axis axis--y")
+  .call(yAxis);
+
+d3.select("button")
+  .on("click", resetted);
+
+svg.call(zoom);
+
+
+var allViews = svg.append("g")
+  .attr("x", 0)
+  .attr("y", 0)
+  .attr("width", 100)
+  .attr("height", 100);
+  
+var viewReferences = [];
+for (let y = 0; y < 9; y++)
+{
+  let viewReferencesRow = [];
+  for (let x = 0; x < 16; x++)
+  {
+    let tempView = allViews.append("svg:image")
+      .attr("class", "crispEdges")
+      .attr('x', x * 16)
+      .attr('y', y * 16)
+      .attr('width', 16)
+      .attr('height', 16)
+      .attr("xlink:href", "images/empty.png")
+    viewReferencesRow.push(tempView);
+  }
+  viewReferences.push(viewReferencesRow);
+}
+
+
+/*
+svg
+  .on("mouseover", function()
+    {
+      console.log('mouseover');
+    })
+  .on("mouseout", function()
+    {
+      console.log('mouseout');
+    })
+  .on("mousemove", mousemove);
+
+
+function mousemove()
+{
+  console.log('mousemove');
+}
+*/
+
+var zoomTransform;
+
+d3.select(window).on('keydown', function()
+{
+  /*
+    var xy = d3.mouse(this);
+  
+    var transform = d3.zoomTransform(svg.node());
+    var xy1 = transform.invert(xy);
+
+    console.log("Mouse:[", xy[0], xy[1], "] Zoomed:[",xy1[0],xy1[1],"]");
+  */
+  console.log('keydown: ' + d3.event.keyCode);
+  
+  
+  console.log(zoomTransform)
+  
+  let translateX = 0;
+  let translateY = 0;
+  if (d3.event.keyCode === 87)
+  {
+    translateY = -20;
+  }
+  if (d3.event.keyCode === 83)
+  {
+    translateY = 20;
+  }
+  if (d3.event.keyCode === 65)
+  {
+    translateX = -20;
+  }
+  if (d3.event.keyCode === 68)
+  {
+    translateX = 20;
+  }
+  svg.transition()
+    .duration(0)
+    .call(zoom.transform, zoomTransform.translate(translateX, translateY));
+})
+
+
+
+
+svg.on("click", function()
+{
+  var xy = d3.mouse(this);
+  
+  var transform = d3.zoomTransform(svg.node());
+  var xy1 = transform.invert(xy);
+
+  console.log("Mouse:[", xy[0], xy[1], "] Zoomed:[",xy1[0],xy1[1],"]");
+  
+  console.log('viewX: ' + Math.floor(xy1[0]/16) + ', viewY: ' + Math.floor(xy1[1]/16));
+  viewReferences[Math.floor(xy1[1]/16)][Math.floor(xy1[0]/16)]
+    .attr("xlink:href", "images/green.png")
+});
+
+svg
+  .on("contextmenu", function (d, i)
+  {
+    d3.event.preventDefault();
+    // react on right-clicking
+    console.log('contextmenu');
+  });
+
+
+
+function zoomed()
+{
+  allViews.attr("transform", d3.event.transform);
+  gX.call(xAxis.scale(d3.event.transform.rescaleX(x)));
+  gY.call(yAxis.scale(d3.event.transform.rescaleY(y)));
+  
+  zoomTransform = d3.event.transform;
+}
+
+function resetted()
+{
+  svg.transition()
+    .duration(750)
+    .call(zoom.transform, d3.zoomIdentity);
+}
+
+
+</script>
+
+
