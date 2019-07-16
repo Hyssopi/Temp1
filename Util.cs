@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
@@ -36,6 +36,13 @@ public class Util
         return output.ToArray();
     }
 
+    public static void WriteTextFile(string filePath, string line, bool append = false)
+    {
+        StreamWriter writer = new StreamWriter(filePath, append);
+        writer.Write(line);
+        writer.Close();
+    }
+    
     // Recursively get list of files from main project relative path, ie. "Assets/Resources/Images"
     public static List<FileInfo> GetFileList(string relativePath, string fileExtensionFilter = "*")
     {
