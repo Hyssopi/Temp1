@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
@@ -13,9 +13,14 @@ public class MapExtractor : MonoBehaviour
     public const int TILE_WIDTH_PIXEL = 16;
     public const int TILE_HEIGHT_PIXEL = 16;
 
+    public const string KEY_DELIMITER = "-";
+    public const string VALUE_DELIMITER = "~";
+    public const string KEY_VALUE_DELIMITER = "=";
+
     public const string RESOURCE_DIRECTORY_PATH = "C:/Users/Public/Documents/Unity Projects/Map Extractor/Assets/Resources";
     public const string MAP_INPUT_DIRECTORY = "Images";
     public const string OUTPUT_DIRECTORY_PATH = "C:/Users/t/Desktop/Map Tile Extractor/tiles";
+    public const string TILE_REFERENCES_FILE_NAME = "tileReferences.dat";
 
     public enum Direction
     {
@@ -25,7 +30,7 @@ public class MapExtractor : MonoBehaviour
         LEFT
     };
 
-    private Dictionary<string, Dictionary<Direction, List<string>>> allImageHashReference;
+    private Dictionary<string, HashSet<string>> tileReferences;
 
 
     private static MapExtractor instance;
@@ -38,7 +43,7 @@ public class MapExtractor : MonoBehaviour
     public void Awake()
     {
         instance = this;
-        allImageHashReference = new Dictionary<string, Dictionary<Direction, List<string>>>();
+        tileReferences = new Dictionary<string, HashSet<string>>();
     }
 
     public void Start()
@@ -46,20 +51,21 @@ public class MapExtractor : MonoBehaviour
         Debug.Log("Map Extractor START");
 
         Util.ConfigureTextureImporterDirectory("Assets/Resources/Images");
-
+        
         List<FileInfo> filePaths = Util.GetFileList(RESOURCE_DIRECTORY_PATH + "/" + MAP_INPUT_DIRECTORY);
-        for (int i = 0; i < filePaths.Count; i++)
+        //for (int i = 0; i < filePaths.Count; i++)
+        foreach (FileInfo filePath in filePaths)
         {
-            if (filePaths[i].Extension.Equals(".meta"))
+            if (filePath.Extension.Equals(".meta"))
             {
                 continue;
             }
 
-            Debug.Log(Path.GetFileNameWithoutExtension(filePaths[i].Name));
+            Debug.Log(Path.GetFileNameWithoutExtension(filePath.Name));
 
 
             // Duplicate the chapter map textures
-            Texture2D mapImage = Util.DuplicateTexture(Resources.Load(MAP_INPUT_DIRECTORY + "/" + Path.GetFileNameWithoutExtension(filePaths[i].Name)) as Texture2D);
+            Texture2D mapImage = Util.DuplicateTexture(Resources.Load(MAP_INPUT_DIRECTORY + "/" + Path.GetFileNameWithoutExtension(filePath.Name)) as Texture2D);
 
 
             Debug.Log("MapImage Height: " + mapImage.height);
@@ -68,7 +74,7 @@ public class MapExtractor : MonoBehaviour
             UnityEngine.Assertions.Assert.IsTrue(mapImage.width % TILE_WIDTH_PIXEL == 0);
             UnityEngine.Assertions.Assert.IsTrue(mapImage.height % TILE_HEIGHT_PIXEL == 0);
 
-            string[,] imageHashReference = new string[mapImage.height / TILE_HEIGHT_PIXEL, mapImage.width / TILE_WIDTH_PIXEL];
+            string[,] mapTileImageHashes = new string[mapImage.height / TILE_HEIGHT_PIXEL, mapImage.width / TILE_WIDTH_PIXEL];
 
             for (int y = 0; y < mapImage.height / TILE_HEIGHT_PIXEL; y++)
             {
@@ -79,80 +85,94 @@ public class MapExtractor : MonoBehaviour
 
                     // TODO: Check if tiles folder exists
                     //Util.SaveTextureAsPNG(subImage, OUTPUT_DIRECTORY_PATH + "/" + i + "_" + x + "_" + y + ".png");
-                    string imageHash = GetTextureHash(subImage);
-                    Util.SaveTextureAsPNG(subImage, OUTPUT_DIRECTORY_PATH + "/" + imageHash + ".png");
+                    string tileImageHash = GetTextureHash(subImage);
+                    Util.SaveTextureAsPNG(subImage, OUTPUT_DIRECTORY_PATH + "/" + tileImageHash + ".png");
 
-                    imageHashReference[y, x] = imageHash;
+                    mapTileImageHashes[y, x] = tileImageHash;
                 }
             }
 
-            for (int y = 0; y < imageHashReference.GetLength(0); y++)
+            for (int y = 0; y < mapTileImageHashes.GetLength(0); y++)
             {
-                for (int x = 0; x < imageHashReference.GetLength(1); x++)
+                for (int x = 0; x < mapTileImageHashes.GetLength(1); x++)
                 {
-                    Debug.Log("(" + x + ", " + y + ") = " + imageHashReference[y, x]);
+                    Debug.Log("(" + x + ", " + y + ") = " + mapTileImageHashes[y, x]);
 
-                    if (!allImageHashReference.ContainsKey(imageHashReference[y, x]))
+                    /*
+                    if (!tileReferences.ContainsKey(mapTileImageHashes[y, x]))
                     {
-                        allImageHashReference[imageHashReference[y, x]] = new Dictionary<Direction, List<string>>();
+                        tileReferences[mapTileImageHashes[y, x]] = new Dictionary<Direction, List<string>>();
                     }
-
-                    Dictionary<Direction, List<string>> currentTileImageHashReference = allImageHashReference[imageHashReference[y, x]];
-
-                    // TODO: Check if neighbor tiles already exists in list
+                    Dictionary<Direction, List<string>> currentTilemapTileImageHashes = tileReferences[mapTileImageHashes[y, x]];
+                    */
 
                     // South node
-                    if (y + 1 < imageHashReference.GetLength(0))
+                    if (y + 1 < mapTileImageHashes.GetLength(0))
                     {
-                        if (!currentTileImageHashReference.ContainsKey(Direction.DOWN))
+                        string key = GetKey(mapTileImageHashes[y, x], Direction.DOWN);
+                        
+                        if (!tileReferences.ContainsKey(key))
                         {
-                            currentTileImageHashReference[Direction.DOWN] = new List<string>();
+                            tileReferences[key] = new HashSet<string>();
                         }
 
-                        string southTileHash = imageHashReference[y + 1, x];
-                        currentTileImageHashReference[Direction.DOWN].Add(southTileHash);
+                        tileReferences[key].Add(mapTileImageHashes[y + 1, x]);
                     }
                     // East node
-                    if (x + 1 < imageHashReference.GetLength(1))
+                    if (x + 1 < mapTileImageHashes.GetLength(1))
                     {
-                        if (!currentTileImageHashReference.ContainsKey(Direction.RIGHT))
+                        string key = GetKey(mapTileImageHashes[y, x], Direction.RIGHT);
+                        
+                        if (!tileReferences.ContainsKey(key))
                         {
-                            currentTileImageHashReference[Direction.RIGHT] = new List<string>();
+                            tileReferences[key] = new HashSet<string>();
                         }
 
-                        string eastTileHash = imageHashReference[y, x + 1];
-                        currentTileImageHashReference[Direction.RIGHT].Add(eastTileHash);
+                        tileReferences[key].Add(mapTileImageHashes[y, x + 1]);
                     }
                     // North node
                     if (y - 1 >= 0)
                     {
-                        if (!currentTileImageHashReference.ContainsKey(Direction.UP))
+                        string key = GetKey(mapTileImageHashes[y, x], Direction.UP);
+                        
+                        if (!tileReferences.ContainsKey(key))
                         {
-                            currentTileImageHashReference[Direction.UP] = new List<string>();
+                            tileReferences[key] = new HashSet<string>();
                         }
 
-                        string northTileHash = imageHashReference[y - 1, x];
-                        currentTileImageHashReference[Direction.UP].Add(northTileHash);
+                        tileReferences[key].Add(mapTileImageHashes[y - 1, x]);
                     }
                     // West node
                     if (x - 1 >= 0)
                     {
-                        if (!currentTileImageHashReference.ContainsKey(Direction.LEFT))
+                        string key = GetKey(mapTileImageHashes[y, x], Direction.LEFT);
+                        
+                        if (!tileReferences.ContainsKey(key))
                         {
-                            currentTileImageHashReference[Direction.LEFT] = new List<string>();
+                            tileReferences[key] = new HashSet<string>();
                         }
 
-                        string westTileHash = imageHashReference[y, x - 1];
-                        currentTileImageHashReference[Direction.LEFT].Add(westTileHash);
+                        tileReferences[key].Add(mapTileImageHashes[y, x - 1]);
                     }
                 }
             }
         }
 
-        foreach (KeyValuePair<string, Dictionary<Direction, List<string>>> pair in allImageHashReference)
+        StringBuilder outputLines = new StringBuilder();
+        foreach (KeyValuePair<string, HashSet<string>> pair in tileReferences)
         {
-            Debug.Log("Key: " + pair.Key + ", Value: " + pair.Value);
+            //Debug.Log("Key: " + pair.Key + ", Value: " + pair.Value);
+            outputLines.Append(pair.Key + KEY_VALUE_DELIMITER);
+            foreach (string neighborImageHash in pair.Value)
+            {
+                outputLines.Append(neighborImageHash + VALUE_DELIMITER);
+            }
+            outputLines.AppendLine("");
         }
+
+
+        Util.WriteTextFile(OUTPUT_DIRECTORY_PATH + "/" + TILE_REFERENCES_FILE_NAME, outputLines.ToString());
+
 
         /*
         bool isInitialSetup = true;
@@ -397,25 +417,6 @@ public class MapExtractor : MonoBehaviour
     */
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
     /*
     public static List<TileNodeData> LoadTileDataListFromFile(string tileDataListFilePath)
     {
@@ -437,6 +438,11 @@ public class MapExtractor : MonoBehaviour
         return tileDataList;
     }
     */
+    
+    public static string GetKey(string tileImageHash, Direction direction)
+    {
+        return tileImageHash + KEY_DELIMITER + direction.ToString();
+    }
 
     public static string GetTextureHash(Texture2D texture)
     {
