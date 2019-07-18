@@ -1,8 +1,9 @@
-using System;
+﻿using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.IO;
+using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
 using UnityEngine;
@@ -10,6 +11,21 @@ using UnityEngine.UI;
 
 public class MapExtractor : MonoBehaviour
 {
+    public class TileNeighborData
+    {
+        public List<string> north;
+        public List<string> east;
+        public List<string> south;
+        public List<string> west;
+        
+        public TileNeighborData(HashSet<string> northTileNeighbors, HashSet<string> eastTileNeighbors, HashSet<string> southTileNeighbors, HashSet<string> westTileNeighbors)
+        {
+            this.north = northTileNeighbors.ToList<string>();
+            this.east = eastTileNeighbors.ToList<string>();
+            this.south = southTileNeighbors.ToList<string>();
+            this.west = westTileNeighbors.ToList<string>();
+        }
+    }
     public const int TILE_WIDTH_PIXEL = 16;
     public const int TILE_HEIGHT_PIXEL = 16;
 
@@ -19,18 +35,20 @@ public class MapExtractor : MonoBehaviour
 
     public const string RESOURCE_DIRECTORY_PATH = "C:/Users/Public/Documents/Unity Projects/Map Extractor/Assets/Resources";
     public const string MAP_INPUT_DIRECTORY = "Images";
-    public const string OUTPUT_DIRECTORY_PATH = "C:/Users/t/Desktop/Map Tile Extractor/tiles";
-    public const string TILE_REFERENCES_FILE_NAME = "tileReferences.dat";
+    public const string BASE_OUTPUT_DIRECTORY_PATH = "C:/Users/t/Desktop/Map Tile Extractor/tiles";
+    public const string IMAGES_OUTPUT_FOLDER_NAME = "images";
+    public const string UNDEFINED_OUTPUT_FOLDER_NAME = "UNDEFINED";
+    public const string TILE_REFERENCES_JSON_FILE_NAME = "tileReferences.json";
 
     public enum Direction
     {
-        UP,
-        RIGHT,
-        DOWN,
-        LEFT
+        NORTH,
+        EAST,
+        SOUTH,
+        WEST
     };
 
-    private Dictionary<string, HashSet<string>> tileReferences;
+    private SortedDictionary<string, HashSet<string>> tileReferences;
 
 
     private static MapExtractor instance;
@@ -43,37 +61,80 @@ public class MapExtractor : MonoBehaviour
     public void Awake()
     {
         instance = this;
-        tileReferences = new Dictionary<string, HashSet<string>>();
+        tileReferences = new SortedDictionary<string, HashSet<string>>();
     }
 
     public void Start()
     {
         Debug.Log("Map Extractor START");
 
+
+        /*
+        TileNeighborData tileNeighborData = new TileNeighborData();
+        tileNeighborData.north = new List<string>();
+        tileNeighborData.east = new List<string>();
+        tileNeighborData.south = new List<string>();
+        tileNeighborData.west = new List<string>();
+
+        tileNeighborData.north.Add("nsdgfaba2");
+        tileNeighborData.north.Add("n12sdgsaba2");
+        tileNeighborData.north.Add("n1sdgba2");
+        tileNeighborData.east.Add("e12sdga2");
+        tileNeighborData.east.Add("esdg4a2");
+        tileNeighborData.south.Add("s3463aj");
+        tileNeighborData.south.Add("suyluylbad");
+
+        string outputJson = JsonUtility.ToJson(tileNeighborData, true);
+        Debug.Log(outputJson);
+        
+        return;
+        */
+
+
+
+
+
+
+
+
         Util.ConfigureTextureImporterDirectory("Assets/Resources/Images");
         
+        // Get list of existing unique tile image hashes by reading from the tiles/images folder
+        HashSet<string> allUniqueTileHashes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        List<FileInfo> existingTileImageFilePaths = Util.GetFileList(BASE_OUTPUT_DIRECTORY_PATH + "/" + IMAGES_OUTPUT_FOLDER_NAME);
+        foreach (FileInfo filePath in existingTileImageFilePaths)
+        {
+            if (!filePath.Extension.Equals(".png", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            //Debug.Log(Path.GetFileNameWithoutExtension(filePath.Name));
+
+            allUniqueTileHashes.Add(Path.GetFileNameWithoutExtension(filePath.Name));
+        }
+
+        // Read the input map images and extract the tile images and neighbor data
         List<FileInfo> filePaths = Util.GetFileList(RESOURCE_DIRECTORY_PATH + "/" + MAP_INPUT_DIRECTORY);
-        //for (int i = 0; i < filePaths.Count; i++)
         foreach (FileInfo filePath in filePaths)
         {
-            if (filePath.Extension.Equals(".meta"))
+            if (!filePath.Extension.Equals(".png", StringComparison.OrdinalIgnoreCase))
             {
                 continue;
             }
 
             Debug.Log(Path.GetFileNameWithoutExtension(filePath.Name));
 
-
-            // Duplicate the chapter map textures
+            // Load the chapter map image
             Texture2D mapImage = Util.DuplicateTexture(Resources.Load(MAP_INPUT_DIRECTORY + "/" + Path.GetFileNameWithoutExtension(filePath.Name)) as Texture2D);
-
 
             Debug.Log("MapImage Height: " + mapImage.height);
             Debug.Log("MapImage Width: " + mapImage.width);
 
             UnityEngine.Assertions.Assert.IsTrue(mapImage.width % TILE_WIDTH_PIXEL == 0);
             UnityEngine.Assertions.Assert.IsTrue(mapImage.height % TILE_HEIGHT_PIXEL == 0);
-
+            
             string[,] mapTileImageHashes = new string[mapImage.height / TILE_HEIGHT_PIXEL, mapImage.width / TILE_WIDTH_PIXEL];
 
             for (int y = 0; y < mapImage.height / TILE_HEIGHT_PIXEL; y++)
@@ -83,12 +144,15 @@ public class MapExtractor : MonoBehaviour
                     //Debug.Log("(" + x + ", " + y + ")");
                     Texture2D subImage = Util.GetSubTexture(mapImage, x * TILE_WIDTH_PIXEL, y * TILE_HEIGHT_PIXEL, TILE_WIDTH_PIXEL, TILE_HEIGHT_PIXEL);
 
-                    // TODO: Check if tiles folder exists
-                    //Util.SaveTextureAsPNG(subImage, OUTPUT_DIRECTORY_PATH + "/" + i + "_" + x + "_" + y + ".png");
                     string tileImageHash = GetTextureHash(subImage);
-                    Util.SaveTextureAsPNG(subImage, OUTPUT_DIRECTORY_PATH + "/" + tileImageHash + ".png");
 
                     mapTileImageHashes[y, x] = tileImageHash;
+
+                    if (!allUniqueTileHashes.Contains(tileImageHash))
+                    {
+                        Util.SaveTextureAsPNG(subImage, BASE_OUTPUT_DIRECTORY_PATH + "/" + IMAGES_OUTPUT_FOLDER_NAME + "/" + UNDEFINED_OUTPUT_FOLDER_NAME + "/" + tileImageHash + ".png");
+                        allUniqueTileHashes.Add(tileImageHash);
+                    }
                 }
             }
 
@@ -96,7 +160,7 @@ public class MapExtractor : MonoBehaviour
             {
                 for (int x = 0; x < mapTileImageHashes.GetLength(1); x++)
                 {
-                    Debug.Log("(" + x + ", " + y + ") = " + mapTileImageHashes[y, x]);
+                    //Debug.Log("(" + x + ", " + y + ") = " + mapTileImageHashes[y, x]);
 
                     /*
                     if (!tileReferences.ContainsKey(mapTileImageHashes[y, x]))
@@ -109,7 +173,7 @@ public class MapExtractor : MonoBehaviour
                     // South node
                     if (y + 1 < mapTileImageHashes.GetLength(0))
                     {
-                        string key = GetKey(mapTileImageHashes[y, x], Direction.DOWN);
+                        string key = GetKey(mapTileImageHashes[y, x], Direction.SOUTH);
                         
                         if (!tileReferences.ContainsKey(key))
                         {
@@ -121,7 +185,7 @@ public class MapExtractor : MonoBehaviour
                     // East node
                     if (x + 1 < mapTileImageHashes.GetLength(1))
                     {
-                        string key = GetKey(mapTileImageHashes[y, x], Direction.RIGHT);
+                        string key = GetKey(mapTileImageHashes[y, x], Direction.EAST);
                         
                         if (!tileReferences.ContainsKey(key))
                         {
@@ -133,7 +197,7 @@ public class MapExtractor : MonoBehaviour
                     // North node
                     if (y - 1 >= 0)
                     {
-                        string key = GetKey(mapTileImageHashes[y, x], Direction.UP);
+                        string key = GetKey(mapTileImageHashes[y, x], Direction.NORTH);
                         
                         if (!tileReferences.ContainsKey(key))
                         {
@@ -145,7 +209,7 @@ public class MapExtractor : MonoBehaviour
                     // West node
                     if (x - 1 >= 0)
                     {
-                        string key = GetKey(mapTileImageHashes[y, x], Direction.LEFT);
+                        string key = GetKey(mapTileImageHashes[y, x], Direction.WEST);
                         
                         if (!tileReferences.ContainsKey(key))
                         {
@@ -158,6 +222,9 @@ public class MapExtractor : MonoBehaviour
             }
         }
 
+        
+        // Save neighbor data as JSON file
+        /*
         StringBuilder outputLines = new StringBuilder();
         foreach (KeyValuePair<string, HashSet<string>> pair in tileReferences)
         {
@@ -169,9 +236,66 @@ public class MapExtractor : MonoBehaviour
             }
             outputLines.AppendLine("");
         }
+        */
+        
 
+        
+        
+        StringBuilder outputLines = new StringBuilder();
 
-        Util.WriteTextFile(OUTPUT_DIRECTORY_PATH + "/" + TILE_REFERENCES_FILE_NAME, outputLines.ToString());
+        outputLines.AppendLine("{");
+
+        foreach (string uniqueTileHash in allUniqueTileHashes)
+        {
+            outputLines.AppendLine("  " + "\"" + uniqueTileHash + "\":");
+            
+            HashSet<string> northTileNeighbors = new HashSet<string>();
+            HashSet<string> eastTileNeighbors = new HashSet<string>();
+            HashSet<string> southTileNeighbors = new HashSet<string>();
+            HashSet<string> westTileNeighbors = new HashSet<string>();
+
+            //tileReferences.TryGetValue(GetKey(uniqueTileHash, Direction.NORTH), out northTileNeighbors);
+
+            if (tileReferences.ContainsKey(GetKey(uniqueTileHash, Direction.NORTH)))
+            {
+                northTileNeighbors = tileReferences[GetKey(uniqueTileHash, Direction.NORTH)];
+            }
+            if (tileReferences.ContainsKey(GetKey(uniqueTileHash, Direction.EAST)))
+            {
+                eastTileNeighbors = tileReferences[GetKey(uniqueTileHash, Direction.EAST)];
+            }
+            if (tileReferences.ContainsKey(GetKey(uniqueTileHash, Direction.SOUTH)))
+            {
+                southTileNeighbors = tileReferences[GetKey(uniqueTileHash, Direction.SOUTH)];
+            }
+            if (tileReferences.ContainsKey(GetKey(uniqueTileHash, Direction.WEST)))
+            {
+                westTileNeighbors = tileReferences[GetKey(uniqueTileHash, Direction.WEST)];
+            }
+
+            /*
+            HashSet<string> northTileNeighbors = tileReferences[GetKey(uniqueTileHash, Direction.NORTH)];
+            HashSet<string> eastTileNeighbors = tileReferences[GetKey(uniqueTileHash, Direction.EAST)];
+            HashSet<string> southTileNeighbors = tileReferences[GetKey(uniqueTileHash, Direction.SOUTH)];
+            HashSet<string> westTileNeighbors = tileReferences[GetKey(uniqueTileHash, Direction.WEST)];
+            */
+            TileNeighborData tileNeighborData = new TileNeighborData(northTileNeighbors, eastTileNeighbors, southTileNeighbors, westTileNeighbors);
+            string outputJson = JsonUtility.ToJson(tileNeighborData, false);
+            outputLines.Append(outputJson);
+            
+            outputLines.AppendLine(",");
+        }
+
+        // TODO: Remove to remove the last ","
+
+        outputLines.AppendLine("}");
+
+        Util.WriteTextFile(BASE_OUTPUT_DIRECTORY_PATH + "/" + TILE_REFERENCES_JSON_FILE_NAME, outputLines.ToString());
+
+        
+
+        
+
 
 
         /*
@@ -202,18 +326,37 @@ public class MapExtractor : MonoBehaviour
             MapEditorUtil.SaveTileNodeDataEdgesToFile(uniqueTileDataList, tileNodeDataListFilePath);
         }
         */
-        /*
-        Texture2D testTileImage1 = Util.DuplicateTexture(Resources.Load("Images/Testing/Tile4 9") as Texture2D);
-        Texture2D testTileImage2 = Util.DuplicateTexture(Resources.Load("Images/Testing/Tile5 12") as Texture2D);
-        Debug.Log("TEST IsEqualTexture=" + Util.IsEqualTexture(testTileImage1, testTileImage2));
-        */
-
-
+    }
+    
+    public static string GetKey(string tileImageHash, Direction direction)
+    {
+        return tileImageHash + KEY_DELIMITER + direction.ToString();
     }
 
+    public static string GetTextureHash(Texture2D texture)
+    {
+        byte[] data = texture.GetRawTextureData();
+        byte[] result = new MD5CryptoServiceProvider().ComputeHash(data);
+        //byte[] result = new SHA512Managed().ComputeHash(data);
+        StringBuilder hexadecimalHashResult = new StringBuilder();
+        // Loop through each byte of the hashed data and format each one as a hexadecimal string.
+        for (int i = 0; i < result.Length; i++)
+        {
+            hexadecimalHashResult.Append(result[i].ToString("x2"));
+        }
+        return hexadecimalHashResult.ToString();
+    }
+
+
+
+
+
+
+    /*
     public void Update()
     {
     }
+    */
 
 
     /*
@@ -439,22 +582,4 @@ public class MapExtractor : MonoBehaviour
     }
     */
     
-    public static string GetKey(string tileImageHash, Direction direction)
-    {
-        return tileImageHash + KEY_DELIMITER + direction.ToString();
-    }
-
-    public static string GetTextureHash(Texture2D texture)
-    {
-        byte[] data = texture.GetRawTextureData();
-        byte[] result = new MD5CryptoServiceProvider().ComputeHash(data);
-        //byte[] result = new SHA512Managed().ComputeHash(data);
-        StringBuilder hexadecimalHashResult = new StringBuilder();
-        // Loop through each byte of the hashed data and format each one as a hexadecimal string.
-        for (int i = 0; i < result.Length; i++)
-        {
-            hexadecimalHashResult.Append(result[i].ToString("x2"));
-        }
-        return hexadecimalHashResult.ToString();
-    }
 }
